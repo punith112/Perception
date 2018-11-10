@@ -28,7 +28,6 @@ def ciplot(t, mu, minus_sigma, plus_sigma, x_real, color=None):
     assert minus_sigma.shape[0] == plus_sigma.shape[0]
     assert t.shape[0] == mu.shape[0]
 
-    fig = plt.figure(figsize=(20,20))
     plt.fill_between(t, minus_sigma, plus_sigma, color=color, alpha=0.5)
     x_pred, = plt.plot(t, mu)
     x_real, = plt.plot(t, x_real)
