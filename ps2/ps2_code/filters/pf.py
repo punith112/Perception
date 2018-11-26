@@ -79,6 +79,7 @@ class PF(LocalizationFilter):
         # TODO implement correction step
         for m in range(1,self.M):
         	self.Z[m] = get_observation(self.X[:,m],z[1])[0]
+        ######## WEIGHTS UPDATE NOT WORKING CORRECTLY ###########
         # for m in range(1,self.M):
         # 	self.w[m]  = gaussian.pdf(z[1]-self.Z[m], 0, self._Q)
         self.X = resampling(self.X_bar, self.w)
