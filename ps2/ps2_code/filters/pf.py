@@ -54,7 +54,7 @@ class PF(LocalizationFilter):
         super(PF, self).__init__(initial_state, alphas, beta)
         # TODO add here specific class variables for the PF
         self.Sigma0 = initial_state.Sigma
-        self.M = num_particles
+        self.M = num_particles * 5
         self.X_bar = np.ones((3,self.M)) * initial_state.mu
         self.X = np.ones((3,self.M)) * initial_state.mu
         self.w_bar = np.ones(self.M) / self.M
@@ -80,7 +80,7 @@ class PF(LocalizationFilter):
         for m in range(1,self.M):
         	self.Z[m] = get_observation(self.X[:,m],z[1])[0]
         # for m in range(1,self.M):
-        # 	self.w[m]  =( gaussian.pdf(self.X[2,m], np.mean(self.Z), np.cov(self.Z)) )
+        # 	self.w[m]  = gaussian.pdf(z[1]-self.Z[m], 0, self._Q)
         self.X = resampling(self.X_bar, self.w)
         updated_pose = pose_from_particles(self.X, self.w)
 

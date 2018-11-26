@@ -78,7 +78,6 @@ class UKF(LocalizationFilter):
             self.Z_bar[1,i] = z[1] 
         z_expected = ( self.w_m * self.Z_bar ).sum(axis=1)
         
-
         self.S = 0
         for i in range(2*self.n+1):
             self.S += self.w_c[i] * ( (self.Z_bar[0,i]-z_expected[0])**2 )
@@ -91,7 +90,6 @@ class UKF(LocalizationFilter):
 
         self._state.mu = self._state_bar.mu + K * (z[0]-z_expected[0])
         self._state.Sigma = self._state_bar.Sigma - np.dot(K*self.S, K.T)
-
 
 
         # self._state.mu = self._state_bar.mu
