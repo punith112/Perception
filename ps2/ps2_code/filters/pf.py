@@ -42,8 +42,8 @@ def low_variance_sampler(X, w):
             i = i+1
             c = c+w[i]
         X_new.append(X[:,i])
-
-    return np.array(X_new).T
+    w = np.ones(M) / M
+    return np.array(X_new).T, w
 
 
 def resampling(X, w):
@@ -58,7 +58,8 @@ def resampling(X, w):
             betta = betta - w[index]
             index = (index + 1) % len(w)
         X_new[:,i] = X[:,index]
-    return X_new
+    w = np.ones(M) / M
+    return X_new, w
 
 def pose_from_particles(X, w):
 	return (X * w).sum(axis=1)
@@ -92,18 +93,18 @@ class PF(LocalizationFilter):
         	self.X_bar[:,m] = sample_from_odometry(self.X[:,m-1], u, self._alphas)
 
         self.w_bar = self.w / sum(self.w) # keep previous weights
-        updated_pose_bar = pose_from_particles(self.X_bar, self.w_bar)
+        # updated_pose_bar = pose_from_particles(self.X_bar, self.w_bar)
         
-        self._state_bar.mu = updated_pose_bar[np.newaxis].T
-        self._state_bar.Sigma = get_gaussian_statistics(self.X_bar.T).Sigma
+        # self._state_bar.mu = updated_pose_bar[np.newaxis].T
+        # self._state_bar.Sigma = get_gaussian_statistics(self.X_bar.T).Sigma
 
-        # self._state_bar.mu = self._state.mu
-        # self._state_bar.Sigma = self._state.Sigma
+        self._state_bar.mu = self._state.mu
+        self._state_bar.Sigma = self._state.Sigma
 
     def update(self, z):
         # TODO implement correction step
         # self.weights_update(z) # doesn't work correctly
-        self.X = low_variance_sampler(self.X_bar, self.w)
+        self.X, self.w = low_variance_sampler(self.X_bar, self.w)
         updated_pose = pose_from_particles(self.X, self.w)
 
         self._state.mu = updated_pose[np.newaxis].T
