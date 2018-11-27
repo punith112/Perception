@@ -11,7 +11,7 @@ import numpy as np
 from numpy.random import uniform, randn
 from scipy.stats import norm as gaussian
 from scipy.linalg import cholesky
-import matplotlib.pyplot as plt
+from math import sqrt
 
 from filters.localization_filter import LocalizationFilter
 from tools.task import get_gaussian_statistics
@@ -21,30 +21,44 @@ from tools.task import sample_from_odometry
 from tools.task import wrap_angle
 
 
+def jacobian_H(lm_pose, mu):
+    mx = lm_pose[0]
+    my = lm_pose[1]
+    q = (mx-mu[0])**2 + (my-mu[1])**2
+    H = np.array([[(my-mu[1])/q,       -(mx-mu[0])/q,      -1],
+                  [0,                  0,                  0 ]])
+    return H
+
+def low_variance_sampler(X, w):
+    w /= sum(w)
+    X_new = []
+    M = len(w)
+    r = uniform(0, 1/M)
+    c = w[0]
+    i = 0
+    for m in range(1,M+1):
+        U = r+(m-1)/M
+        while(U>c):
+            i = i+1
+            c = c+w[i]
+        X_new.append(X[:,i])
+
+    return np.array(X_new).T
+
+
 def resampling(X, w):
 	# weights normalization:
-	w /= sum(w)
-	index = np.random.randint(0,len(w))
-	betta = 0
-	X_new = np.zeros_like(X)
-	for i in range(len(w)):
-		betta = betta + np.random.uniform(0, 2*max(w))
-		while betta > w[index]:
-			betta = betta - w[index]
-			index = (index + 1) % len(w)
-		X_new[:,i] = X[:,index]
-	return X_new
-
-# def pose_from_particles(X, w):
-# 	w /= sum(w)
-# 	x_est = 0
-# 	y_est = 0
-# 	theta_est = 0
-# 	for i in range(len(X)):
-# 		x_est = x_est + X[0,i]*w[i]
-# 		y_est = y_est + X[1,i]*w[i]
-# 		theta_est = theta_est + X[2,i]*w[i]
-# 	return np.array([x_est, y_est, theta_est])
+    w /= sum(w)
+    index = np.random.randint(0,len(w))
+    betta = 0
+    X_new = np.zeros_like(X)
+    for i in range(len(w)):
+        betta = betta + np.random.uniform(0, 2*max(w))
+        while betta > w[index]:
+            betta = betta - w[index]
+            index = (index + 1) % len(w)
+        X_new[:,i] = X[:,index]
+    return X_new
 
 def pose_from_particles(X, w):
 	return (X * w).sum(axis=1)
@@ -60,6 +74,17 @@ class PF(LocalizationFilter):
         self.w_bar = np.ones(self.M) / self.M
         self.w = np.ones(self.M) / self.M # uniform weighs distribution
         self.Z = np.zeros(self.M)
+
+    def weights_update(self, z):        
+        mx = self._field_map.landmarks_poses_x[int(z[1])]
+        my = self._field_map.landmarks_poses_y[int(z[1])]
+        H = jacobian_H([mx, my], self.mu)
+        Q = np.array([[self._Q,0],[0,0]])
+        S = np.dot(np.dot(H, self.Sigma), H.T) + Q
+        for m in range(self.M):
+            self.Z[m] = get_observation(self.X[:,m],z[1])[0]
+            self.w[m] = gaussian.pdf(z[0]-self.Z[m], 0, sqrt(S[0,0]))
+
 
     def predict(self, u):
         # # TODO Implement here the PF, perdiction part
@@ -77,19 +102,12 @@ class PF(LocalizationFilter):
 
     def update(self, z):
         # TODO implement correction step
-        for m in range(1,self.M):
-        	self.Z[m] = get_observation(self.X[:,m],z[1])[0]
-        ######## WEIGHTS UPDATE NOT WORKING CORRECTLY ###########
-        # for m in range(1,self.M):
-        # 	self.w[m]  = gaussian.pdf(z[1]-self.Z[m], 0, self._Q)
-        self.X = resampling(self.X_bar, self.w)
+        # self.weights_update(z) # doesn't work correctly
+        self.X = low_variance_sampler(self.X_bar, self.w)
         updated_pose = pose_from_particles(self.X, self.w)
 
         self._state.mu = updated_pose[np.newaxis].T
         self._state.Sigma = get_gaussian_statistics(self.X.T).Sigma
-
-
-
 
         # self._state.mu = self._state_bar.mu
         # self._state.Sigma = self._state_bar.Sigma
