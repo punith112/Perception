@@ -95,11 +95,11 @@ class PF(LocalizationFilter):
         self.w_bar = self.w / sum(self.w) # keep previous weights
         # updated_pose_bar = pose_from_particles(self.X_bar, self.w_bar)
         
-        # self._state_bar.mu = updated_pose_bar[np.newaxis].T
-        # self._state_bar.Sigma = get_gaussian_statistics(self.X_bar.T).Sigma
+        self._state_bar.mu = updated_pose_bar[np.newaxis].T
+        self._state_bar.Sigma = get_gaussian_statistics(self.X_bar.T).Sigma
 
-        self._state_bar.mu = self._state.mu
-        self._state_bar.Sigma = self._state.Sigma
+        # self._state_bar.mu = self._state.mu
+        # self._state_bar.Sigma = self._state.Sigma
 
     def update(self, z):
         # TODO implement correction step
