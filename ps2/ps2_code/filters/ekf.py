@@ -49,9 +49,7 @@ class EKF(LocalizationFilter):
         M = get_motion_noise_covariance(u, self._alphas)
         self._state_bar.Sigma = np.dot( np.dot(G,self.Sigma), G.T) + np.dot( np.dot(V,M), V.T)
         
-        # self._state_bar.mu = self._state.mu
-        # self._state_bar.Sigma = self._state.Sigma
-
+        
     def update(self, z):
         # TODO implement correction step
         self.mu_bar[2] = wrap_angle(self.mu_bar[2])
