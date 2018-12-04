@@ -12,51 +12,54 @@ import numpy as np
 
 from tools.task import get_prediction
 from slam_folder.slamBase import SlamBase
+from field_map import FieldMap
 
 
 class SimulationSlamBase(SlamBase):
     def __init__(self, slam_type, data_association, update_type, args, initial_state):
         super(SimulationSlamBase, self).__init__(slam_type, data_association, update_type, np.array(args.beta))
-        self.iR = 0
-        self.iM = 0
+        self.iR = 3
+        num_landmarks_per_side = 4
+        self.field_map = FieldMap(num_landmarks_per_side)
+        self.iM = 2*2*num_landmarks_per_side
         self.params = args
         self.state_bar = initial_state
         self.state = initial_state
-        # self.state.mu = np.array([initial_state.mu.T[0]])
-        # self.state.Sigma = np.array([initial_state.Sigma])
-        self.state_bar.mu = initial_state.mu
-        self.state_bar.Sigma = initial_state.Sigma
-        self.state.mu = initial_state.mu
-        self.state.Sigma = initial_state.Sigma
-        
+        mx = self.field_map._landmark_poses_x
+        my = self.field_map._landmark_poses_y
+        self.state.mu = np.vstack([initial_state.mu, np.zeros((self.iM,1))])
+        i = 0
+        for m in range(self.iR,self.iM,2):
+            self.state.mu[m] = mx[i]
+            self.state.mu[m+1] = my[i]
+            i+=1
+        self.state.Sigma = np.pad(initial_state.Sigma,[(0,self.iM-self.iR),(0,self.iM-self.iR)], mode='constant', constant_values=0)
+        self.R = np.zeros_like(self.state.Sigma)
+        self.G = np.zeros_like(self.state.Sigma)
 
     def predict(self, u, dt=None):
         iR = self.iR  # Robot indexes
         iM = self.iM  # Map indexes
-        # mu_r = self.mu[iR]
-        mu_r = self.mu_bar
+        mu_r = self.mu[:iR]
 
-        F_r = self.get_g_prime_wrt_state(mu_r, u)
-        F_e = self.get_g_prime_wrt_motion(mu_r, u)
+        G_x = self.get_g_prime_wrt_state(mu_r, u)
+        V_x = self.get_g_prime_wrt_motion(mu_r, u)
         M_t = self.get_motion_noise_covariance(u)
 
-        R_t = F_e @ M_t @ F_e.T
+        R_t = V_x @ M_t @ V_x.T
+        self.R[:R_t.shape[0], :R_t.shape[1]] = R_t
+        self.G[:G_x.shape[0], :G_x.shape[1]] = G_x
 
         # EKF prediction of the state mean.
-        # self.state.mu[iR, 0] = get_prediction(mu_r, u)
         self.state_bar.mu = get_prediction(mu_r, u)[np.newaxis].T
 
         # EKF prediction of the state covariance.
-        # iRT = iR[:, None]
-        # iMT = iM[:, None]
-
-        # self.state.Sigma[iRT, iR] = F_r @ self.Sigma[iRT, iR] @ F_r.T + R_t
-        self.state_bar.Sigma = F_r @ self.Sigma_bar @ F_r.T + R_t
-
-        # if iM.size > 0:
-        #     self.state.Sigma[iRT, iM] = F_r @ self.Sigma[iRT, iM]
-        #     self.state.Sigma[iMT, iR] = self.state.Sigma[iRT, iM].T
-        return mu_r
+        self.state_bar.Sigma[:iR,:iR] = G_x @ self.Sigma_bar[:iR, :iR] @ G_x.T + R_t
+        if iM > 0:
+            self.state.Sigma[:iR, iR:iM] = G_x @ self.Sigma[:iR, iR:iM]
+            self.state.Sigma[iR:iM, :iR] = self.state.Sigma[iR:iM, :iR] @ G_x.T
+        Sigma = self.state.Sigma
+        return mu_r, Sigma
 
     def update(self, z):
         # self.mu_bar[2] = wrap_angle(self.mu_bar[2])

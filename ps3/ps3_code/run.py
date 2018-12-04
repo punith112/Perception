@@ -161,7 +161,7 @@ def main():
 
             # TODO SLAM predict(u)
             slam = SimulationSlamBase('ekf', 'known', 'batch', args, initial_state)
-            mu_bar = slam.predict(u)
+            mu_bar, Sigma_bar = slam.predict(u)
             # TODO SLAM update
             # mu = slam.update(z)
 
