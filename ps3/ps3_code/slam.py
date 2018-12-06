@@ -23,7 +23,6 @@ class SimulationSlamBase(SlamBase):
         self.field_map = FieldMap(num_landmarks_per_side)
         self.iM = 2*2*num_landmarks_per_side
         self.params = args
-        self.state_bar = initial_state
         self.state = initial_state
         mx = self.field_map._landmark_poses_x
         my = self.field_map._landmark_poses_y
@@ -34,6 +33,7 @@ class SimulationSlamBase(SlamBase):
             self.state.mu[m+1] = my[i]
             i+=1
         self.state.Sigma = np.pad(initial_state.Sigma,[(0,self.iM-self.iR),(0,self.iM-self.iR)], mode='constant', constant_values=0)
+        self.state_bar = self.state
         self.R = np.zeros_like(self.state.Sigma)
         self.G = np.zeros_like(self.state.Sigma)
 
@@ -51,15 +51,14 @@ class SimulationSlamBase(SlamBase):
         self.G[:G_x.shape[0], :G_x.shape[1]] = G_x
 
         # EKF prediction of the state mean.
-        self.state_bar.mu = get_prediction(mu_r, u)[np.newaxis].T
-
+        self.state_bar.mu[:iR] = get_prediction(mu_r, u)[np.newaxis].T
         # EKF prediction of the state covariance.
         self.state_bar.Sigma[:iR,:iR] = G_x @ self.Sigma_bar[:iR, :iR] @ G_x.T + R_t
         if iM > 0:
-            self.state.Sigma[:iR, iR:iM] = G_x @ self.Sigma[:iR, iR:iM]
-            self.state.Sigma[iR:iM, :iR] = self.state.Sigma[iR:iM, :iR] @ G_x.T
+            self.state_bar.Sigma[:iR, iR:iM] = G_x @ self.Sigma[:iR, iR:iM]
+            self.state_bar.Sigma[iR:iM, :iR] = self.state.Sigma[iR:iM, :iR] @ G_x.T
         Sigma = self.state.Sigma
-        return mu_r, Sigma
+        return self.mu_bar, self.Sigma_bar
 
     def update(self, z):
         # self.mu_bar[2] = wrap_angle(self.mu_bar[2])
@@ -125,7 +124,6 @@ class SimulationSlamBase(SlamBase):
         """
         :return: The state mean after the update step.
         """
-        # return self.state_bar.mu
         return self.state_bar.mu.T[0]
 
     @property
@@ -141,7 +139,6 @@ class SimulationSlamBase(SlamBase):
         """
         :return: The state mean after the update step.
         """
-        # return self.state.mu
         return self.state.mu.T[0]
 
     @property
