@@ -1,0 +1,2 @@
+Weights update part in update filter step was implemented incorrect.
+Thats why the robot is estimating its pose based only on odometry, nit including measurements.

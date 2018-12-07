@@ -54,7 +54,7 @@ class PF(LocalizationFilter):
         super(PF, self).__init__(initial_state, alphas, beta)
         # TODO add here specific class variables for the PF
         self.Sigma0 = initial_state.Sigma
-        self.M = num_particles * 5
+        self.M = num_particles * 2
         self.X_bar = np.ones((3,self.M)) * initial_state.mu
         self.X = np.ones((3,self.M)) * initial_state.mu
         self.w_bar = np.ones(self.M) / self.M
