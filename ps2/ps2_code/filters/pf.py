@@ -81,7 +81,7 @@ class PF(LocalizationFilter):
         my = self._field_map.landmarks_poses_y[int(z[1])]
         H = jacobian_H([mx, my], self.mu)
         Q = self._Q
-        S = np.dot(np.dot(H, self.Sigma), H.T) + Q
+        S = np.dot(np.dot(H, self.Sigma_bar), H.T) + Q
         for m in range(1,self.M):
             self.Z[m-1] = get_observation(self.X[:,m-1],z[1])[0]
             self.w[m-1] = gaussian.pdf(z[0]-self.Z[m-1], 0, sqrt(S))

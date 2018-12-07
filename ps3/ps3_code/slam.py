@@ -18,10 +18,11 @@ from field_map import FieldMap
 class SimulationSlamBase(SlamBase):
     def __init__(self, slam_type, data_association, update_type, args, initial_state):
         super(SimulationSlamBase, self).__init__(slam_type, data_association, update_type, np.array(args.beta))
-        self.iR = 3
+        self.iR = 3 # [x, y, theta] of the robot
         num_landmarks_per_side = 4
         self.field_map = FieldMap(num_landmarks_per_side)
-        self.iM = 2*2*num_landmarks_per_side
+        self.N = 2*num_landmarks_per_side
+        self.iM = 3*self.N # [mx my s] for each landmark from N
         self.params = args
         self.state_bar = initial_state
         self.state = initial_state
@@ -29,9 +30,10 @@ class SimulationSlamBase(SlamBase):
         my = self.field_map._landmark_poses_y
         self.state.mu = np.vstack([initial_state.mu, np.zeros((self.iM,1))])
         i = 0
-        for m in range(self.iR,self.iM,2):
+        for m in range(self.iR,self.iM,3):
             self.state.mu[m] = mx[i]
             self.state.mu[m+1] = my[i]
+            self.state.mu[m+2] = i+1
             i+=1
         self.state.Sigma = np.pad(initial_state.Sigma,[(0,self.iM-self.iR),(0,self.iM-self.iR)], mode='constant', constant_values=0)
         self.R = np.zeros_like(self.state.Sigma)

@@ -147,8 +147,7 @@ def main():
     movie_writer = get_movie_writer(should_write_movie, 'Simulation SLAM', args.movie_fps, args.plot_pause_len)
     progress_bar = FillingCirclesBar('Simulation Progress', max=data.num_steps)
 
-    x = np.linspace(0, 400, data.num_steps)
-    y = np.ones(data.num_steps) * 100
+    slam = SimulationSlamBase('ekf', 'known', 'batch', args, initial_state)
     with movie_writer.saving(fig, args.movie_file, data.num_steps) if should_write_movie else get_dummy_context_mgr():
         for t in range(data.num_steps):
             # Used as means to include the t-th time-step while plotting.
@@ -158,10 +157,9 @@ def main():
             u = data.filter.motion_commands[t]
             # Observation at the current step.
             z = data.filter.observations[t]
-
             # TODO SLAM predict(u)
-            slam = SimulationSlamBase('ekf', 'known', 'batch', args, initial_state)
             mu_bar, Sigma_bar = slam.predict(u)
+            print(len(mu_bar))
             # TODO SLAM update
             # mu = slam.update(z)
 
