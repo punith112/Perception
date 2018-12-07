@@ -22,11 +22,7 @@ from tools.objects import Gaussian
 from tools.plot import get_plots_figure
 from tools.plot import plot_robot
 from field_map import FieldMap
-<<<<<<< HEAD
-# from slam import SimulationSlamBase
-=======
 from slam import SimulationSlamBase
->>>>>>> d54699fc89c31f00d3afd6f7264bf16738a3a4e5
 from tools.data import generate_data as generate_input_data
 from tools.data import load_data
 from tools.plot import plot_field
@@ -121,11 +117,6 @@ def main():
     validate_cli_args(args)
     alphas = np.array(args.alphas)
     beta = np.array(args.beta)
-
-<<<<<<< HEAD
-
-=======
->>>>>>> d54699fc89c31f00d3afd6f7264bf16738a3a4e5
     mean_prior = np.array([180., 50., 0.])
     Sigma_prior = 1e-12 * np.eye(3, 3)
     initial_state = Gaussian(mean_prior, Sigma_prior)
@@ -154,10 +145,7 @@ def main():
     movie_writer = get_movie_writer(should_write_movie, 'Simulation SLAM', args.movie_fps, args.plot_pause_len)
     progress_bar = FillingCirclesBar('Simulation Progress', max=data.num_steps)
 
-<<<<<<< HEAD
-=======
     slam = SimulationSlamBase('ekf', 'known', 'batch', args, initial_state)
->>>>>>> d54699fc89c31f00d3afd6f7264bf16738a3a4e5
     with movie_writer.saving(fig, args.movie_file, data.num_steps) if should_write_movie else get_dummy_context_mgr():
         for t in range(data.num_steps):
             # Used as means to include the t-th time-step while plotting.
@@ -167,20 +155,12 @@ def main():
             u = data.filter.motion_commands[t]
             # Observation at the current step.
             z = data.filter.observations[t]
-<<<<<<< HEAD
 
-            # TODO SLAM predict(u)
-
-            # TODO SLAM update
-            
-=======
             # TODO SLAM predict(u)
             mu_bar, Sigma_bar = slam.predict(u)
-            
             # TODO SLAM update
-            # mu = slam.update(z)
+            slam.update(z)
 
->>>>>>> d54699fc89c31f00d3afd6f7264bf16738a3a4e5
             progress_bar.next()
             if not should_update_plots:
                 continue
@@ -198,14 +178,13 @@ def main():
             plt.plot([data.debug.real_robot_path[t, 0]], [data.debug.real_robot_path[t, 1]], '*r')
             plt.plot([data.debug.noise_free_robot_path[t, 0]], [data.debug.noise_free_robot_path[t, 1]], '*g')
 
-<<<<<<< HEAD
-            # TODO plot SLAM solution
-=======
             # TODO plot SLAM soltion
-            plt.plot(mu_bar[0], mu_bar[1], 'o')
+            plt.plot(mu_bar[0], mu_bar[1], 'ro')
+            plt.plot(slam.m[:,0], slam.m[:,1], '*') # new lm pose
+            print('\n')
+            print(slam.m)
             # for m in range(3,len(mu_bar),2):
             #     plt.plot(mu_bar[m], mu_bar[m+1], 'ro')
->>>>>>> d54699fc89c31f00d3afd6f7264bf16738a3a4e5
 
             if should_show_plots:
                 # Draw all the plots and pause to create an animation effect.
