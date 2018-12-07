@@ -29,15 +29,17 @@ class SimulationSlamBase(SlamBase):
         my = self.field_map._landmark_poses_y
         self.state.mu = np.vstack([initial_state.mu, np.zeros((self.iM,1))])
         i = 0
-        for m in range(self.iR,self.iM,3):
+        for m in range(self.iR,self.iM+3,3):
             self.state.mu[m] = mx[i]
             self.state.mu[m+1] = my[i]
-            self.state.mu[m+2] = i+1
+            self.state.mu[m+2] = i
             i+=1
         self.state.Sigma = np.pad(initial_state.Sigma,[(0,self.iM-self.iR),(0,self.iM-self.iR)], mode='constant', constant_values=0)
         self.state_bar = self.state
         self.R = np.zeros_like(self.state.Sigma)
         self.G = np.zeros_like(self.state.Sigma)
+        self.Q = np.diag([self.params.beta[0], self.params.beta[1]])
+
 
     def predict(self, u, dt=None):
         iR = self.iR  # Robot indexes

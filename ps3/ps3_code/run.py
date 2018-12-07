@@ -118,7 +118,6 @@ def main():
     alphas = np.array(args.alphas)
     beta = np.array(args.beta)
 
-
     mean_prior = np.array([180., 50., 0.])
     Sigma_prior = 1e-12 * np.eye(3, 3)
     initial_state = Gaussian(mean_prior, Sigma_prior)
@@ -159,7 +158,7 @@ def main():
             z = data.filter.observations[t]
             # TODO SLAM predict(u)
             mu_bar, Sigma_bar = slam.predict(u)
-            print(len(mu_bar))
+            
             # TODO SLAM update
             # mu = slam.update(z)
 
