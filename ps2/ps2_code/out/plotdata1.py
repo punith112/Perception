@@ -3,6 +3,8 @@ import numpy as np
 from math import *
 
 data_input = np.load('input_data.npy')
+x_ideal = data_input['noise_free_robot_path'][:,0]
+y_ideal = data_input['noise_free_robot_path'][:,1]
 x_in = data_input['real_robot_path'][:,0]
 y_in = data_input['real_robot_path'][:,1]
 theta_in = data_input['real_robot_path'][:,2]
@@ -27,7 +29,8 @@ def plotoutput(file_name):
 	plt.figure()
 	plt.plot(x_in,y_in)
 	plt.plot(x,y)
-	plt.legend(['real_robot_path', 'filtered_path'])
+	plt.plot(x_ideal,y_ideal)
+	plt.legend(['real_robot_path', 'filtered_path', 'ideal_path'])
 	plt.title(title)
 
 	plt.figure()
@@ -53,5 +56,5 @@ def plotoutput(file_name):
 	plt.show()
 
 
-file_name = 'output_pf_odom.npy'
+file_name = 'output_ekf.npy'
 plotoutput(file_name)

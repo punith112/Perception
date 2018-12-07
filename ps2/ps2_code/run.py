@@ -262,11 +262,9 @@ def main():
             plt.plot([data.debug.noise_free_robot_path[t, 0]], [data.debug.noise_free_robot_path[t, 1]], '*m')
 
             if show_particles:
-                # samples = localization_filter.X.T
-                # plt.scatter(samples[0], samples[1], s=2)
                 samples = localization_filter.X
-                plt.scatter(samples[0,:], samples[1,:], s=2)
-            '''
+                plt.scatter(samples[0], samples[1], s=2)
+            
             else:
                 plot2dcov(localization_filter.mu_bar[:-1],
                           localization_filter.Sigma_bar[:-1, :-1],
@@ -277,7 +275,7 @@ def main():
                           'blue', 3,
                           legend='{} +'.format(args.filter_name.upper()))
                 plt.legend()
-            '''
+            
             if show_trajectory:
                 if len(sim_trajectory.mean.shape) > 2:
                     # This means that we probably intend to show the trajectory for ever particle.
