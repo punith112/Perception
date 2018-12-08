@@ -12,6 +12,7 @@ This file contains all utilities for plotting data.
 
 import numpy as np
 from matplotlib import pyplot as plt
+from scipy.linalg import cholesky
 
 
 

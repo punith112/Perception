@@ -13,6 +13,8 @@ from math import *
 from scipy.linalg import block_diag
 
 from tools.task import get_prediction, wrap_angle
+from tools.plot import plot2dcov
+
 from slam_folder.slamBase import SlamBase
 from field_map import FieldMap
 
@@ -41,7 +43,7 @@ class SimulationSlamBase(SlamBase):
         self.state_bar = self.state
         self.R = np.zeros_like(self.state.Sigma)
         self.G = np.zeros_like(self.state.Sigma)
-        self.Q = np.diag([self.params.beta[0], self.params.beta[1]])
+        self.Q = np.diag([self.params.beta[0]**2, self.params.beta[1]**2])
         self.lm_ids = [] # sorted list of lm ids
         self.lm_seq = [] # sequence of lms
         self.m = np.empty((self.N, 2))
@@ -49,6 +51,9 @@ class SimulationSlamBase(SlamBase):
             self.m[i,:] = np.array([None, None])
 
     def initialize_new_landmark(self, lm_id, z, batch_i):
+        self.mu_bar[2] = wrap_angle(self.mu_bar[2])
+        self.mu[2] = wrap_angle(self.mu[2])
+
         iR = self.iR
         iM = self.iM
         if (lm_id not in self.lm_seq): # lm never seen before
@@ -74,11 +79,17 @@ class SimulationSlamBase(SlamBase):
             self.state_bar.Sigma = np.block([[Sx, Sxm, Sur],
                                          [Smx, Sm, Sr],
                                          [Sbl, Sb, Sbr]])
+        self.mu_bar[2] = wrap_angle(self.mu_bar[2])
+        self.mu[2] = wrap_angle(self.mu[2])
+        
         self.lm_ids.append(lm_id)
         self.lm_ids = list( np.unique(np.array(self.lm_ids)) )
         
 
     def predict(self, u, dt=None):
+        self.mu_bar[2] = wrap_angle(self.mu_bar[2])
+        self.mu[2] = wrap_angle(self.mu[2])
+
         iR = self.iR # Robot indexes
         self.iM = 2+len(self.lm_ids)*2
         iM = self.iM # Map indexes
@@ -101,11 +112,16 @@ class SimulationSlamBase(SlamBase):
             self.state_bar.Sigma[:iR, iR:iR+iM] = G_x @ self.Sigma[:iR, iR:iR+iM]
             self.state_bar.Sigma[iR:iR+iM, :iR] = self.state.Sigma[iR:iR+iM, :iR] @ G_x.T
 
+        self.mu_bar[2] = wrap_angle(self.mu_bar[2])
+        self.mu[2] = wrap_angle(self.mu[2])
+
         return self.mu_bar, self.Sigma_bar
 
 
     def update(self, z):
-        for lm_id in (z[:,2]): # for all observed features
+        self.mu_bar[2] = wrap_angle(self.mu_bar[2])
+        self.mu[2] = wrap_angle(self.mu[2])
+        for lm_id in z[:,2]: # for all observed features
             batch_i = np.where(z==lm_id)[0][0] # 0th or 1st of observed lms in the batch
             self.initialize_new_landmark(lm_id, z, batch_i)
             delta = np.array(self.m[int(lm_id)] - self.mu_bar[:2])
@@ -119,8 +135,12 @@ class SimulationSlamBase(SlamBase):
             self.state_bar.mu = self.state_bar.mu + K @ (Z - z_expected)[np.newaxis].T
             self.state_bar.Sigma = (np.eye(K.shape[0]) - (K @ H)) @ self.Sigma_bar
 
+        self.mu_bar[2] = wrap_angle(self.mu_bar[2])
+        self.mu[2] = wrap_angle(self.mu[2])
+
         self.state.mu = self.state_bar.mu
         self.state.Sigma = self.state_bar.Sigma
+
         return self.mu, self.Sigma
 
 

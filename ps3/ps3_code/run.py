@@ -27,6 +27,7 @@ from tools.data import generate_data as generate_input_data
 from tools.data import load_data
 from tools.plot import plot_field
 from tools.plot import plot_observations
+from tools.plot import plot2dcov
 from tools.task import get_dummy_context_mgr
 from tools.task import get_movie_writer
 
@@ -146,6 +147,8 @@ def main():
     progress_bar = FillingCirclesBar('Simulation Progress', max=data.num_steps)
 
     slam = SimulationSlamBase('ekf', 'known', 'batch', args, initial_state)
+    mu_traj = np.array([None, None])
+    theta = []
     with movie_writer.saving(fig, args.movie_file, data.num_steps) if should_write_movie else get_dummy_context_mgr():
         for t in range(data.num_steps):
             # Used as means to include the t-th time-step while plotting.
@@ -157,10 +160,12 @@ def main():
             z = data.filter.observations[t]
 
             # TODO SLAM predict(u)
-            mu_bar, Sigma_bar = slam.predict(u)
+            mu, Sigma = slam.predict(u)
 
             # TODO SLAM update
             mu, Sigma = slam.update(z)
+            mu_traj = np.vstack((mu_traj, mu[:2]))
+            theta.append(mu[2])
 
             progress_bar.next()
             if not should_update_plots:
@@ -179,13 +184,20 @@ def main():
             plt.plot([data.debug.real_robot_path[t, 0]], [data.debug.real_robot_path[t, 1]], '*r')
             plt.plot([data.debug.noise_free_robot_path[t, 0]], [data.debug.noise_free_robot_path[t, 1]], '*g')
 
-            # TODO plot SLAM soltion
-            plt.plot(mu_bar[0], mu_bar[1], 'ro')
+            # TODO plot SLAM solution
+            # robot filtered trajectory and covariance
+            plt.plot(mu_traj[:,0], mu_traj[:,1], 'blue')
             plt.plot(slam.m[:,0], slam.m[:,1], '*') # new lm pose
-            # print('\n')
-            # print(slam.m)
-            # for m in range(3,len(mu_bar),2):
-            #     plt.plot(mu_bar[m], mu_bar[m+1], 'ro')
+            plot2dcov(mu[:2], Sigma[:2,:2], color='b', nSigma=1, legend=None)
+
+            # landmarks covariances and expected poses
+            Sm = slam.Sigma[slam.iR:slam.iR+slam.iM, slam.iR:slam.iR+slam.iM]
+            mu_M = slam.mu[slam.iR:]
+            for c in range(0, slam.iM-2, 2):
+                Sigma_lm = Sm[c:c+2, c:c+2]
+                mu_lm = mu_M[c:c+2]
+                plot2dcov(mu_lm, Sigma_lm, color='k', nSigma=1, legend=None)
+
             if should_show_plots:
                 # Draw all the plots and pause to create an animation effect.
                 plt.draw()
@@ -196,6 +208,8 @@ def main():
 
     progress_bar.finish()
 
+    plt.figure(2)
+    plt.plot(theta)
     plt.show(block=True)
 
 if __name__ == '__main__':
