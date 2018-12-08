@@ -10,6 +10,7 @@ g.ferrer@skoltech.ru
 
 import numpy as np
 from math import *
+from scipy.linalg import block_diag
 
 from tools.task import get_prediction, wrap_angle
 from slam_folder.slamBase import SlamBase
@@ -23,7 +24,7 @@ class SimulationSlamBase(SlamBase):
         num_landmarks_per_side = 4
         self.field_map = FieldMap(num_landmarks_per_side)
         self.N = 2*num_landmarks_per_side
-        self.iM = 2*self.N # [mx my] for each landmark from N
+        self.iM = 0 # [mx my] for each landmark from N
         self.params = args
         self.state = initial_state
         # mx = self.field_map._landmark_poses_x
@@ -41,13 +42,46 @@ class SimulationSlamBase(SlamBase):
         self.R = np.zeros_like(self.state.Sigma)
         self.G = np.zeros_like(self.state.Sigma)
         self.Q = np.diag([self.params.beta[0], self.params.beta[1]])
-        self.lm_ids = []
-        self.m = np.zeros((self.N, 2))
+        self.lm_ids = [] # sorted list of lm ids
+        self.lm_seq = [] # sequence of lms
+        self.m = np.empty((self.N, 2))
+        for i in range(self.N):
+            self.m[i,:] = np.array([None, None])
 
+    def initialize_new_landmark(self, lm_id, z, batch_i):
+        iR = self.iR
+        iM = self.iM
+        if (lm_id not in self.lm_seq): # lm never seen before
+            self.lm_seq.append(lm_id)
+            self.G = block_diag(self.G, np.eye(2))
+            self.R = block_diag(self.R, np.zeros((2,2)))
+            r = z[batch_i,0]
+            phi = wrap_angle(z[batch_i,1])
+            theta =  self.mu_bar[2]
+            m_new = self.mu_bar[:2] + np.array([r*cos(phi+theta), r*sin(phi+theta)])
+            self.m[int(lm_id),:] = m_new
+            self.state.mu = np.append(self.mu, m_new)[np.newaxis].T # append new lm coords to the state vector
+            L = self.get_jacobian_L(r, phi, theta)
+            W = self.get_jacobian_W(r, phi, theta)
+            Sx = self.Sigma_bar[:iR,:iR]; Sxm = self.Sigma_bar[:iR, iR:iR+iM]
+            Smx = self.Sigma_bar[iR:iR+iM, :iR]; Sm = self.Sigma_bar[iR:iR+iM, iR:iR+iM]
+            # new Sigma sub-matrices
+            Sur = Sx @ L.T; Sr = Smx @ L.T; Sbr = L@Sx@L.T + W@self.Q@W.T
+            Sbl = L @ Sx; Sb = L @ Sxm
+            # if len(self.lm_ids)==0:
+            #     self.state_bar.Sigma = np.block([[Sx,  Sur],
+            #                                      [Sbl, Sbr]])
+            self.state_bar.Sigma = np.block([[Sx, Sxm, Sur],
+                                         [Smx, Sm, Sr],
+                                         [Sbl, Sb, Sbr]])
+        self.lm_ids.append(lm_id)
+        self.lm_ids = list( np.unique(np.array(self.lm_ids)) )
+        
 
     def predict(self, u, dt=None):
-        iR = self.iR  # Robot indexes
-        iM = self.iM  # Map indexes
+        iR = self.iR # Robot indexes
+        self.iM = 2+len(self.lm_ids)*2
+        iM = self.iM # Map indexes
         mu_r = self.mu[:iR]
 
         G_x = self.get_g_prime_wrt_state(mu_r, u)
@@ -62,53 +96,39 @@ class SimulationSlamBase(SlamBase):
         self.state_bar.mu[:iR] = get_prediction(mu_r, u)[np.newaxis].T
         self.state_bar.mu[2] = wrap_angle(self.mu_bar[2])
         # EKF prediction of the state covariance.
-        self.state_bar.Sigma[:iR,:iR] = G_x @ self.Sigma_bar[:iR, :iR] @ G_x.T + R_t
+        self.state_bar.Sigma[:iR,:iR] = G_x @ self.Sigma[:iR, :iR] @ G_x.T + R_t
         if iM > 0:
-            self.state_bar.Sigma[:iR, iR:iM] = G_x @ self.Sigma[:iR, iR:iM]
-            self.state_bar.Sigma[iR:iM, :iR] = self.state.Sigma[iR:iM, :iR] @ G_x.T
-        Sigma = self.state.Sigma
+            self.state_bar.Sigma[:iR, iR:iR+iM] = G_x @ self.Sigma[:iR, iR:iR+iM]
+            self.state_bar.Sigma[iR:iR+iM, :iR] = self.state.Sigma[iR:iR+iM, :iR] @ G_x.T
+
         return self.mu_bar, self.Sigma_bar
+
 
     def update(self, z):
         for lm_id in (z[:,2]): # for all observed features
-            j = np.where(z==lm_id)[0][0]
-            if (lm_id not in self.lm_ids): # lm never seen before
-                print('\n')
-                print(lm_id)
-                r = z[j,0]
-                phi = wrap_angle(z[j,1])
-                theta =  self.mu_bar[2]
-                self.m[int(lm_id),:] = self.mu_bar[:2] + np.array([r*cos(phi+theta), r*sin(phi+theta)])
-                self.state_bar.mu = np.append( self.mu_bar, self.m )[np.newaxis].T
-            self.lm_ids.append(lm_id)
+            batch_i = np.where(z==lm_id)[0][0] # 0th or 1st of observed lms in the batch
+            self.initialize_new_landmark(lm_id, z, batch_i)
+            delta = np.array(self.m[int(lm_id)] - self.mu_bar[:2])
+            q = np.dot( delta, delta.T )
+            z_expected = np.array([ sqrt(q), wrap_angle( atan2(delta[1],delta[0])-self.mu_bar[2] ) ])
+            H = self.get_jacobian_H(q, delta, int(lm_id))
+            S = (H @ self.Sigma_bar) @ H.T + self.Q
+            K = (self.Sigma_bar @ H.T) @ np.linalg.inv(S)
 
-            # delta = np.array(self.m[int(lm_id)] - self.mu_bar[:2])
-            # q = np.dot( delta, delta.T )
-            # z_exp = np.array([ sqrt(q), wrap_angle( atan2(delta[1],delta[0])-self.mu_bar[2] ) ])
-            # F = np.l
-            # H = self.get_jacobian_H(q, delta, F)
-        
-        #     mx = self._field_map.landmarks_poses_x[lm_id]
-        #     my = self._field_map.landmarks_poses_y[lm_id]
-        #     q = (mx-self.mu[0])**2 + (my-self.mu[1])**2
-        #     H = np.array([(my-mu[1])/q, -(mx-mu[0])/q, -1])
-        #     Q = np.diag(self.params.beta)
-        #     S = np.dot(np.dot(H, self.Sigma_bar), H.T) + Q
-        #     K = np.dot( np.dot(self.Sigma_bar, H.T), np.linalg.inv(S) )
-            
-        #     self.state_bar.mu = self.state_bar.mu + np.dot(K, z[np.newaxis].T-z_expected[np.newaxis].T)
-        #     self.state_bar.Sigma = np.dot( np.eye(3) - np.dot(K,H), self.Sigma_bar )
-        
-        # self.state.mu = self._state_bar.mu
-        # self.state.Sigma = self._state_bar.Sigma
-        # return self.mu
+            Z = z[batch_i,:2]
+            self.state_bar.mu = self.state_bar.mu + K @ (Z - z_expected)[np.newaxis].T
+            self.state_bar.Sigma = (np.eye(K.shape[0]) - (K @ H)) @ self.Sigma_bar
+
+        self.state.mu = self.state_bar.mu
+        self.state.Sigma = self.state_bar.Sigma
+        return self.mu, self.Sigma
+
 
     def get_motion_noise_covariance(self, motion):
         """
         :param motion: The motion command at the current time step (format: [drot1, dtran, drot2]).
         :return: The covariance of the motion noise (in motion space).
         """
-
         drot1, dtran, drot2 = motion
         a1, a2, a3, a4 = self.params.alphas
 
@@ -123,7 +143,6 @@ class SimulationSlamBase(SlamBase):
         :param motion: The motion command at the current time step (format: np.array([drot1, dtran, drot2])).
         :return: Jacobian of the state transition matrix w.r.t. the state.
         """
-
         drot1, dtran, drot2 = motion
 
         return np.array([[1, 0, -dtran * np.sin(state[2] + drot1)],
@@ -137,17 +156,34 @@ class SimulationSlamBase(SlamBase):
         :param motion: The motion command at the current time step (format: np.array([drot1, dtran, drot2])).
         :return: Jacobian of the state transition matrix w.r.t. the motion command.
         """
-
         drot1, dtran, drot2 = motion
 
         return np.array([[-dtran * np.sin(state[2] + drot1), np.cos(state[2] + drot1), 0],
                          [dtran * np.cos(state[2] + drot1), np.sin(state[2] + drot1), 0],
                          [1, 0, 1]])
 
+    def get_jacobian_H(self, q, delta, lm_id):
+        Hx = (1/q) * np.array([ [-sqrt(q)*delta[0], -sqrt(q)*delta[1], 0],
+                                  [delta[1],        -delta[0],        -q] ])
+        Hj = (1/q) * np.array([ [sqrt(q)*delta[0],  sqrt(q)*delta[1]],
+                                [-delta[1],         delta[0]       ]])
+        n_lms = len(self.lm_seq)
+        H = np.zeros((2, 3+2*n_lms))
+        H[:2,:3] = Hx
+        j = lm_id
+        column = np.where(np.array(self.lm_seq)==j)[0][0]
+        H[:,3+2*column:3+2*column+2] = Hj
+        return H
+
     @staticmethod
-    def get_jacobian_H(q, delta):
-        return (1/q) * np.array([ [-sqrt(q)*delta[0], -sqrt(q)*delta[1], 0, sqrt(q)*delta[0], sqrt(q)*delta[1], 0],
-                                  [delta[1],          -delta[0],        -q, -delta[1],        delta[0],         0] ])
+    def get_jacobian_L(r, phi, theta):
+        return np.array([[1, 0, -r*sin(phi+theta)],
+                         [0, 1, r*cos(phi+theta) ]])
+
+    @staticmethod
+    def get_jacobian_W(r, phi, theta):
+        return np.array([[cos(phi+theta), -r*sin(phi+theta)],
+                         [sin(phi+theta), r*cos(phi+theta)]])
 
     @property
     def mu_bar(self):

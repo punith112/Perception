@@ -158,8 +158,9 @@ def main():
 
             # TODO SLAM predict(u)
             mu_bar, Sigma_bar = slam.predict(u)
+
             # TODO SLAM update
-            slam.update(z)
+            mu, Sigma = slam.update(z)
 
             progress_bar.next()
             if not should_update_plots:
@@ -181,11 +182,10 @@ def main():
             # TODO plot SLAM soltion
             plt.plot(mu_bar[0], mu_bar[1], 'ro')
             plt.plot(slam.m[:,0], slam.m[:,1], '*') # new lm pose
-            print('\n')
-            print(slam.m)
+            # print('\n')
+            # print(slam.m)
             # for m in range(3,len(mu_bar),2):
             #     plt.plot(mu_bar[m], mu_bar[m+1], 'ro')
-
             if should_show_plots:
                 # Draw all the plots and pause to create an animation effect.
                 plt.draw()
