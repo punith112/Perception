@@ -146,6 +146,7 @@ def main():
     movie_writer = get_movie_writer(should_write_movie, 'Simulation SLAM', args.movie_fps, args.plot_pause_len)
     progress_bar = FillingCirclesBar('Simulation Progress', max=data.num_steps)
 
+    # slam object initialization
     slam = SimulationSlamBase('ekf', 'known', 'batch', args, initial_state)
     mu_traj = np.array([None, None])
     theta = []
@@ -161,7 +162,7 @@ def main():
 
             # TODO SLAM predict(u)
             mu, Sigma = slam.predict(u)
-
+            
             # TODO SLAM update
             mu, Sigma = slam.update(z)
             mu_traj = np.vstack((mu_traj, mu[:2]))
@@ -188,7 +189,7 @@ def main():
             # robot filtered trajectory and covariance
             plt.plot(mu_traj[:,0], mu_traj[:,1], 'blue')
             plt.plot(slam.m[:,0], slam.m[:,1], '*') # new lm pose
-            plot2dcov(mu[:2], Sigma[:2,:2], color='b', nSigma=1, legend=None)
+            plot2dcov(mu[:2], Sigma[:2,:2], color='b', nSigma=3, legend=None)
 
             # landmarks covariances and expected poses
             Sm = slam.Sigma[slam.iR:slam.iR+slam.iM, slam.iR:slam.iR+slam.iM]
@@ -196,7 +197,7 @@ def main():
             for c in range(0, slam.iM-2, 2):
                 Sigma_lm = Sm[c:c+2, c:c+2]
                 mu_lm = mu_M[c:c+2]
-                plot2dcov(mu_lm, Sigma_lm, color='k', nSigma=1, legend=None)
+                plot2dcov(mu_lm, Sigma_lm, color='k', nSigma=3, legend=None)
 
             if should_show_plots:
                 # Draw all the plots and pause to create an animation effect.
@@ -208,8 +209,8 @@ def main():
 
     progress_bar.finish()
 
-    plt.figure(2)
-    plt.plot(theta)
+    # plt.figure(2)
+    # plt.plot(theta)
     plt.show(block=True)
 
 if __name__ == '__main__':
