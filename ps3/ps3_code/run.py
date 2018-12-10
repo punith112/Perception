@@ -22,7 +22,8 @@ from tools.objects import Gaussian
 from tools.plot import get_plots_figure
 from tools.plot import plot_robot
 from field_map import FieldMap
-from slam import SimulationSlamBase
+from ekf_slam import EKF_SLAM
+# from sam import SAM
 from tools.data import generate_data as generate_input_data
 from tools.data import load_data
 from tools.plot import plot_field
@@ -147,9 +148,10 @@ def main():
     progress_bar = FillingCirclesBar('Simulation Progress', max=data.num_steps)
 
     # slam object initialization
-    slam = SimulationSlamBase('ekf', 'known', 'batch', args, initial_state)
+    slam = EKF_SLAM('ekf', 'known', 'batch', args, initial_state)
     mu_traj = np.array([None, None])
     theta = []
+
     with movie_writer.saving(fig, args.movie_file, data.num_steps) if should_write_movie else get_dummy_context_mgr():
         for t in range(data.num_steps):
             # Used as means to include the t-th time-step while plotting.
@@ -188,16 +190,18 @@ def main():
             # TODO plot SLAM solution
             # robot filtered trajectory and covariance
             plt.plot(mu_traj[:,0], mu_traj[:,1], 'blue')
-            plt.plot(slam.m[:,0], slam.m[:,1], '*') # new lm pose
-            plot2dcov(mu[:2], Sigma[:2,:2], color='b', nSigma=3, legend=None)
+            # plt.plot(slam.m[:,0], slam.m[:,1], '*') # new lm pose
+            plot2dcov(mu[:2], Sigma[:2,:2], color='b', nSigma=1, legend=None)
 
             # landmarks covariances and expected poses
             Sm = slam.Sigma[slam.iR:slam.iR+slam.iM, slam.iR:slam.iR+slam.iM]
             mu_M = slam.mu[slam.iR:]
-            for c in range(0, slam.iM-2, 2):
+
+            for c in range(0, slam.iM, 2):
                 Sigma_lm = Sm[c:c+2, c:c+2]
                 mu_lm = mu_M[c:c+2]
-                plot2dcov(mu_lm, Sigma_lm, color='k', nSigma=3, legend=None)
+                plt.plot(mu_lm[0], mu_lm[1], 'ro')
+                plot2dcov(mu_lm, Sigma_lm, color='k', nSigma=1, legend=None)
 
             if should_show_plots:
                 # Draw all the plots and pause to create an animation effect.
