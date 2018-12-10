@@ -15,7 +15,7 @@ from scipy.linalg import block_diag
 from tools.task import get_prediction, wrap_angle
 from tools.plot import plot2dcov
 
-from slam_folder.slamBase import SlamBase
+from slamBase import SlamBase
 from field_map import FieldMap
 
 
@@ -35,7 +35,6 @@ class EKF_SLAM(SlamBase):
 
     def expandSigma(self, Sigma, L, W, Q):
         iR = self.iR
-        # self.iM = Sigma.shape[0]-self.iR
         iM = self.iM
         Sx = Sigma[:iR,:iR];        Sxm = Sigma[:iR, iR:iR+iM]
         Smx = Sigma[iR:iR+iM, :iR]; Sm = Sigma[iR:iR+iM, iR:iR+iM]
@@ -51,31 +50,26 @@ class EKF_SLAM(SlamBase):
         return Sigma
 
 
-    def initialize_new_landmark(self, lm_id, z, batch_i):
-        self.mu_bar[2] = wrap_angle(self.mu_bar[2])
-        self.mu[2] = wrap_angle(self.mu[2])
-        
+    def initialize_new_landmark(self, lm_id, z, batch_i):        
         self.lm_seq.append(lm_id)
         self.G = block_diag(self.G, np.eye(2))
         self.R = block_diag(self.R, np.zeros((2,2)))
+
         r = z[batch_i,0]
         phi = wrap_angle(z[batch_i,1])
         theta =  wrap_angle(self.mu_bar[2])
+        self.m_new = self.mu_bar[:2] + np.array([r*cos(wrap_angle(phi+theta)), r*sin(wrap_angle(phi+theta))])
         L = self.get_jacobian_L(r, phi, theta)
         W = self.get_jacobian_W(r, phi, theta)
-        self.m_new = self.mu_bar[:2] + np.array([r*cos(wrap_angle(phi+theta)), r*sin(wrap_angle(phi+theta))])
 
-        self.state.mu = np.append(self.mu, self.m_new)[np.newaxis].T # append new lm coords to the state vector
-        self.state_bar.Sigma = self.expandSigma(self.Sigma_bar, L, W, self.Q)
+        self.state_bar.mu = np.append(self.mu_bar, self.m_new)[np.newaxis].T # append new lm coords to the state vector
+        self.state_bar.Sigma = self.expandSigma(self.Sigma_bar, L, W, self.Q) # expand covariance matrix
 
         self.mu_bar[2] = wrap_angle(self.mu_bar[2])
         self.mu[2] = wrap_angle(self.mu[2])
         
 
     def predict(self, u, dt=None):
-        self.mu_bar[2] = wrap_angle(self.mu_bar[2])
-        self.mu[2] = wrap_angle(self.mu[2])
-
         iR = self.iR # Robot indexes
         iM = self.iM # Map indexes
         mu_r = self.mu[:iR]
@@ -105,28 +99,27 @@ class EKF_SLAM(SlamBase):
 
 
     def update(self, z):
-        self.mu_bar[2] = wrap_angle(self.mu_bar[2])
-        self.mu[2] = wrap_angle(self.mu[2])
         for lm_id in z[:,2]: # for all observed features
             batch_i = np.where(z==lm_id)[0][0] # 0th or 1st of observed lms in the batch
-
-            if (lm_id not in self.lm_seq): # lm never seen before
-                self.initialize_new_landmark(lm_id, z, batch_i)
 
             r = z[batch_i,0]
             phi = wrap_angle(z[batch_i,1])
             theta =  wrap_angle(self.mu_bar[2])
-            self.m_new = self.mu_bar[:2] + np.array([r*cos(wrap_angle(phi+theta)), r*sin(wrap_angle(phi+theta))])
-            
+            self.m_new = self.mu_bar[:2] + np.array([r*cos((phi+theta)), r*sin((phi+theta))])
+
+            if (lm_id not in self.lm_seq): # lm never seen before
+                self.initialize_new_landmark(lm_id, z, batch_i)
+
             delta = np.array(self.m_new - self.mu_bar[:2])
             q = np.dot( delta, delta.T )
             z_expected = np.array([ sqrt(q), wrap_angle( atan2(delta[1],delta[0])-self.mu_bar[2] ) ])
             H = self.get_jacobian_H(q, delta, int(lm_id))
+
             S = (H @ self.Sigma_bar) @ H.T + self.Q
             K = (self.Sigma_bar @ H.T) @ np.linalg.inv(S)
 
-            Z = z[batch_i,:2]
-            self.state_bar.mu = self.state_bar.mu + K @ (Z - z_expected)[np.newaxis].T
+            innovation_vector = z[batch_i,:2] - z_expected; innovation_vector[1] = wrap_angle(innovation_vector[1])
+            self.state_bar.mu = self.state_bar.mu + K @ (innovation_vector)[np.newaxis].T
             self.state_bar.Sigma = (np.eye(K.shape[0]) - (K @ H)) @ self.Sigma_bar
 
         self.mu_bar[2] = wrap_angle(self.mu_bar[2])
@@ -186,14 +179,16 @@ class EKF_SLAM(SlamBase):
                                   [-delta[1],         delta[0]       ]])
 
     def get_jacobian_H(self, q, delta, lm_id):
-        # H = dh / dy, y = state
-        # Hx = dh / dx, x - robot's state
-        # Hj = dh / dm, m - lms positions, m=[mx,my]
+        """
+        H = dh / dy, y = state
+        Hx = dh / dx, x - robot's state
+        Hj = dh / dm, m - lms positions, m=[mx,my]
+        """
         Hx = self.get_jacobian_Hx(q, delta)
         Hj = self.get_jacobian_J(q, delta)
         n_lms = len(self.lm_seq)
         H = np.zeros((2, 3+2*n_lms))
-        H[:2,:3] = Hx
+        H[:,:3] = Hx
         column = np.where(np.array(self.lm_seq)==lm_id)[0][0]
         H[:,3+2*column:3+2*column+2] = Hj
         return H
