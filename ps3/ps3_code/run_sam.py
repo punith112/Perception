@@ -166,7 +166,7 @@ def main():
 
             
             # TODO SLAM update
-            mu, Sigma = sam.update(z)
+            mu, Sigma = sam.update(u, z)
             mu_traj = np.vstack((mu_traj, mu[:2]))
             theta.append(mu[2])
 

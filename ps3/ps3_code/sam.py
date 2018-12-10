@@ -62,7 +62,7 @@ class SAM():
 
 		return self.mu_bar, self.Sigma_bar
 
-	def update(self, z):
+	def update(self, u, z):
 		for lm_id in z[:,2]: # for all observed features
 			batch_i = np.where(z==lm_id)[0][0] # 0th or 1st of observed lms in the batch
 
@@ -73,13 +73,21 @@ class SAM():
 
 			delta = np.array(self.m_new - self.mu_bar[:2])
 			q = np.dot( delta, delta.T )
+			z_expected = np.array([ sqrt(q), wrap_angle( atan2(delta[1],delta[0])-self.mu_bar[2] ) ])
 			self.H = self.get_jacobian_Hx(q, delta)
 			self.J = self.get_jacobian_J(q, delta)
 			if (lm_id not in self.lm_seq): # lm never seen before
 				self.initialize_new_landmark(lm_id, z, batch_i)
 			number_of_lms = len(self.lm_seq)
 			A = self.adjacency_matrix(self.G, self.H, self.J, number_of_lms)
-			x0 = self.mu_bar
+			x0 = self.mu_bar # linearization point
+
+			a = x0 - get_prediction(self.mu, u)
+			c = z[batch_i,:2] - z_expected
+
+			b = np.random.rand(A.shape[0]) # TODO: should consist of a-s and c-s
+
+			delta = self.QR_factorization(A,b)
 
 		self.mu_bar[2] = wrap_angle(self.mu_bar[2])
 		self.mu[2] = wrap_angle(self.mu[2])
