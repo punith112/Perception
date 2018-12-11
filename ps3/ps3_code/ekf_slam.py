@@ -59,7 +59,7 @@ class EKF_SLAM(SlamBase):
         ang = wrap_angle(phi+theta)
 
         mu_new = self.mu[:2] + np.array([r*cos(ang), r*sin(ang)]) # position of new landmark
-        self.state.mu=np.append(self.mu, mu_new)[np.newaxis].T
+        self.state.mu = np.append(self.mu, mu_new)[np.newaxis].T
 
         L = self.get_jacobian_L(r, phi, theta)
         W = self.get_jacobian_W(r, phi, theta)            

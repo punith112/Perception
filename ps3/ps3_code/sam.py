@@ -17,19 +17,20 @@ class SAM():
 		self.R = np.zeros_like(self.state.Sigma)
 		self.G = np.zeros_like(self.state.Sigma)
 		self.M = 0 # number of all lms
-		self.batches = 2
-		self.K = self.M*self.batches # number of measurements Z
+		self.observed_lms = 2
+		self.K = self.M*self.observed_lms # number of measurements Z
 		M = self.M # number of landmarks M
-		N = M # number of poses X
+		N = 0 # number of poses X
 		K = self.K
 		dx = len(initial_state.mu); dz = 2; dm = 2;
 		self.A = np.zeros((N*dx+K*dz,N*dx+M*dm))
 		self.b = np.random.rand(self.A.shape[0])[np.newaxis].T
-		self.G = np.random.rand(dx,dx)
-		self.H = np.random.rand(dz,dx)
-		self.J = np.random.rand(dz,dm)
+		self.G = []
+		self.H = []
+		self.J = []
 		self.lm_seq = [] # sequence of lms
-		self.number_of_lms = len(self.lm_seq)
+		self.x_traj = initial_state.mu
+		self.lm_poses = np.array([])
 		
 	def predict(self, u, dt=None):
 		iR = self.iR # Robot indexes
@@ -39,11 +40,8 @@ class SAM():
 		G_x = self.get_g_prime_wrt_state(mu_r, u)
 		V_x = self.get_g_prime_wrt_motion(mu_r, u)
 		M_t = self.get_motion_noise_covariance(u)
-		self.G = G_x
 
 		R_t = V_x @ M_t @ V_x.T
-		self.R[:R_t.shape[0], :R_t.shape[1]] = R_t
-		self.G[:G_x.shape[0], :G_x.shape[1]] = G_x
 
 		# EKF prediction of the state mean.
 		self.state_bar.mu[:iR] = get_prediction(mu_r, u)[np.newaxis].T
@@ -62,31 +60,34 @@ class SAM():
 
 
 	def update(self, u, z):
-		for lm_id in z[:,2]: # for all observed features
-			batch_i = np.where(z==lm_id)[0][0] # 0th or 1st of observed lms in the batch
+		for batch_i in range(z.shape[0]): # for all observed features
+			lm_id = z[batch_i,2]
 
-			r = z[batch_i,0]
-			phi = wrap_angle(z[batch_i,1])
-			theta =  wrap_angle(self.mu_bar[2])
-			self.m_new = self.mu_bar[:2] + np.array([r*cos((phi+theta)), r*sin((phi+theta))])
-
-			delta = np.array(self.m_new - self.mu_bar[:2])
-			q = np.dot( delta, delta.T )
-			z_expected = np.array([ sqrt(q), wrap_angle( atan2(delta[1],delta[0])-self.mu_bar[2] ) ])
-			self.H = self.get_jacobian_Hx(q, delta)
-			self.J = self.get_jacobian_J(q, delta)
 			if (lm_id not in self.lm_seq): # lm never seen before
 				self.initialize_new_landmark(lm_id, z, batch_i)
-			A = self.adjacency_matrix(self.G, self.H, self.J, self.number_of_lms)
-			x0 = self.mu_bar # linearization point
 
-			a = x0 - get_prediction(self.mu, u)
-			c = z[batch_i,:2] - z_expected
-			# print(len(a)+len(c))
+			# G, H, J calculation
+			j = int(np.where(self.lm_seq==lm_id)[0] + 1) # number of ID in landmark array
+			delta = self.mu_bar[self.iR+2*j-2 : self.iR+2*j] - self.mu_bar[:2]
+			q = np.dot( delta, delta.T )
+			z_expected = np.array([ sqrt(q), wrap_angle( atan2(delta[1],delta[0])-self.mu_bar[2] ) ])
+			self.H.append( self.get_jacobian_Hx(q, delta) )
+			self.J.append( self.get_jacobian_J(q, delta) )
+			self.G.append( self.get_g_prime_wrt_state(self.mu[:self.iR], u) )
+			
+			self.x_traj = np.vstack((self.x_traj, self.state.mu[:3]))
 
+			A = self.adjacency_matrix(lm_id)
+			# x0 = self.mu_bar # linearization point
+			# a = x0 - get_prediction(self.mu, u)
+			# c = z[batch_i,:2] - z_expected
 			b = np.random.rand(A.shape[0]) # TODO: should consist of a-s and c-s
-
 			delta = self.QR_factorization(A,b)
+
+			self.state_bar.mu[:3] = (self.mu_bar[:3] + delta[:3])[np.newaxis].T
+			print(len(self.x_traj),  len(delta[:-len(self.lm_seq)*2]))
+
+		# self.state.mu = self.state_bar.mu
 
 		self.mu_bar[2] = wrap_angle(self.mu_bar[2])
 		self.mu[2] = wrap_angle(self.mu[2])
@@ -98,62 +99,55 @@ class SAM():
 
 	def initialize_new_landmark(self, lm_id, z, batch_i):        
 		self.lm_seq.append(lm_id)
-		self.number_of_lms = len(self.lm_seq)
+		self.iM += 2
+
+		r = z[batch_i,0]
+		phi = wrap_angle(z[batch_i,1])
+		theta = wrap_angle(self.mu_bar[2])
+		ang = wrap_angle(phi+theta)
+
+		mu_new = self.mu[:2] + np.array([r*cos(ang), r*sin(ang)]) # position of new landmark
+		self.state.mu = np.append(self.mu, mu_new)[np.newaxis].T
+		self.lm_poses = self.state.mu[3:]
 
 
-	def adjacency_matrix(self, G,H,J, number_of_lms, visualize=False):
-		self.M = number_of_lms
-		M = self.M # number of landmarks M
-		self.N = 20 # number of poses X;
+	# def adjacency_matrix(self, G,H,J, number_of_lms, visualize=False):
+	def adjacency_matrix(self, lm_id):
+		self.M = int( max(self.lm_seq) ); M = self.M # number of landmarks M
+		self.N = int( self.x_traj.shape[0] / self.iR ) # number of poses X;
 		N = self.N
-		K = self.N*self.batches # number of measurements Z
-		batches = self.batches # number of measurements from 1 pose
+		K = self.N * self.observed_lms # number of measurements Z
+		observed_lms = self.observed_lms # number of measurements from 1 pose
+		G = self.G[-1]; H = self.H[-1]; J = self.J[-1]
 		dx = G.shape[0]; dz = H.shape[0]; dm = J.shape[1]
-		self.A = np.zeros((N*dx+K*dz,N*dx+M*dm))
-		A = self.A
+		A = np.zeros((N*dx+K*dz,N*dx+M*dm))
 		I = np.eye(dx)
 		for i in range(N):
 		    A[dx*i:dx*(i+1),dx*i:dx*(i+1)] = I
 		for g in range(N-1):
-		    A[dx*(g+1):(g+2)*dx, dx*g:dx*(g+1)] = G
+		    A[dx*(g+1):(g+2)*dx, dx*g:dx*(g+1)] = self.G[g]
 
 		dM = 2
 		for h in range(N):
-		    for batch in range(batches):
-		        hr = dx*N+(batch+batches*h)*dz
+		    for batch in range(observed_lms):
+		        hr = dx*N+(batch+observed_lms*h)*dz
 		        hc = dx*h
-		        A[hr:hr+dz, hc:hc+dx] = H
+		        A[hr:hr+dz, hc:hc+dx] = self.H[h-1]
 		        jr = hr
 		        jc = dx*N+dm*(h+batch+dM)%(M*dm)
-		        A[jr:jr+dz, jc:jc+dm] = J
-
-		if visualize:
-			plt.figure(1, figsize=(10,10))
-			plt.spy(A, marker='o', markersize=5)
-			plt.title('Adjacency matrix $A$')
-
-			print('non zero elements in A = ',np.count_nonzero(A))
-			plt.figure(2)
-			Lambda = np.transpose(A) @ A # + np.eye(N+M)*0.001
-			plt.spy(Lambda, marker='o', markersize=5)
-			plt.title('Information matrix $\Lambda$')
-
-			plt.figure(3)
-			plt.spy(np.linalg.inv(Lambda), marker='o', markersize=5)
-			plt.title('Inverse of $\Lambda$: dense')
-			plt.show()
+		        A[jr:jr+dz, jc:jc+dm] = self.J[h-1]
 		return A
 
 	@staticmethod
-	def back_substitution(A, b):
+	def back_substitution(R, b):
 		# solving Rx = b
 	    n = b.size
 	    x = np.zeros_like(b)
 
 	    for i in range(n-1, 0, -1):
-	        x[i] = A[i, i]/b[i]
+	        x[i] = R[i, i]/b[i]
 	        for j in range (i-1, 0, -1):
-	            A[i, i] += A[j, i]*x[i]
+	            R[i, i] += R[j, i]*x[i]
 	    return x
 
 	def QR_factorization(self, A, b):
@@ -161,6 +155,7 @@ class SAM():
 		b_new = Q.T @ b
 		R = R_[:A.shape[0],:]
 		d = b_new[:A.shape[1]]
+		# R delta = d
 		delta = self.back_substitution(R,d)
 		return delta
 
@@ -246,19 +241,19 @@ class SAM():
 		return self.state.Sigma
 
 
-from run import get_cli_args
-args = get_cli_args()
+# from run import get_cli_args
+# args = get_cli_args()
 
-mean_prior = np.array([180., 50., 0.])
-Sigma_prior = 1e-12 * np.eye(3, 3)
-initial_state = Gaussian(mean_prior, Sigma_prior)
+# mean_prior = np.array([180., 50., 0.])
+# Sigma_prior = 1e-12 * np.eye(3, 3)
+# initial_state = Gaussian(mean_prior, Sigma_prior)
 
-# sam object initialization
-number_of_lms = 16
-sam = SAM(initial_state, args)
+# # sam object initialization
+# number_of_lms = 16
+# sam = SAM(initial_state, args)
 
-# Adjacency matrix for random Jacobians
-# M=N = 8, K = 8*2=16
-A = sam.adjacency_matrix(sam.G,sam.H,sam.J, number_of_lms, visualize=True)
-b = np.random.rand(A.shape[0])
-print('\ndelta_x=', sam.QR_factorization(A,b)[:3])
+# # Adjacency matrix for random Jacobians
+# # M=N = 8, K = 8*2=16
+# A = sam.adjacency_matrix(sam.G,sam.H,sam.J, number_of_lms, visualize=True)
+# b = np.random.rand(A.shape[0])
+# print('\ndelta_x=', sam.QR_factorization(A,b)[:3])
