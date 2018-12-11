@@ -103,9 +103,10 @@ class SAM():
 
 	def adjacency_matrix(self, G,H,J, number_of_lms, visualize=False):
 		self.M = number_of_lms
-		K = self.M*self.batches # number of measurements Z
 		M = self.M # number of landmarks M
-		N = M # number of poses X
+		self.N = 20 # number of poses X;
+		N = self.N
+		K = self.N*self.batches # number of measurements Z
 		batches = self.batches # number of measurements from 1 pose
 		dx = G.shape[0]; dz = H.shape[0]; dm = J.shape[1]
 		self.A = np.zeros((N*dx+K*dz,N*dx+M*dm))
@@ -245,21 +246,19 @@ class SAM():
 		return self.state.Sigma
 
 
-# from run import get_cli_args
-# args = get_cli_args()
-# print(args)
+from run import get_cli_args
+args = get_cli_args()
 
-# mean_prior = np.array([180., 50., 0.])
-# Sigma_prior = 1e-12 * np.eye(3, 3)
-# initial_state = Gaussian(mean_prior, Sigma_prior)
+mean_prior = np.array([180., 50., 0.])
+Sigma_prior = 1e-12 * np.eye(3, 3)
+initial_state = Gaussian(mean_prior, Sigma_prior)
 
-# # sam object initialization
-# number_of_lms = 8
-# print(number_of_lms)
-# sam = SAM(initial_state, args)
+# sam object initialization
+number_of_lms = 16
+sam = SAM(initial_state, args)
 
-# # Adjacency matrix for random Jacobians
-# # M=N = 8, K = 8*2=16
-# A = sam.adjacency_matrix(sam.G,sam.H,sam.J, number_of_lms, visualize=True)
-# b = np.random.rand(A.shape[0])
-# print('\ndelta_x=', sam.QR_factorization(A,b)[:3])
+# Adjacency matrix for random Jacobians
+# M=N = 8, K = 8*2=16
+A = sam.adjacency_matrix(sam.G,sam.H,sam.J, number_of_lms, visualize=True)
+b = np.random.rand(A.shape[0])
+print('\ndelta_x=', sam.QR_factorization(A,b)[:3])
