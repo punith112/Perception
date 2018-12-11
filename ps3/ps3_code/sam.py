@@ -28,10 +28,8 @@ class SAM():
 		self.G = np.random.rand(dx,dx)
 		self.H = np.random.rand(dz,dx)
 		self.J = np.random.rand(dz,dm)
-		# self.G = np.zeros((dx,dx))
-		# self.H = np.zeros((dz,dx))
-		# self.J = np.zeros((dz,dm))
 		self.lm_seq = [] # sequence of lms
+		self.number_of_lms = len(self.lm_seq)
 		
 	def predict(self, u, dt=None):
 		iR = self.iR # Robot indexes
@@ -62,6 +60,7 @@ class SAM():
 
 		return self.mu_bar, self.Sigma_bar
 
+
 	def update(self, u, z):
 		for lm_id in z[:,2]: # for all observed features
 			batch_i = np.where(z==lm_id)[0][0] # 0th or 1st of observed lms in the batch
@@ -78,12 +77,12 @@ class SAM():
 			self.J = self.get_jacobian_J(q, delta)
 			if (lm_id not in self.lm_seq): # lm never seen before
 				self.initialize_new_landmark(lm_id, z, batch_i)
-			number_of_lms = len(self.lm_seq)
-			A = self.adjacency_matrix(self.G, self.H, self.J, number_of_lms)
+			A = self.adjacency_matrix(self.G, self.H, self.J, self.number_of_lms)
 			x0 = self.mu_bar # linearization point
 
 			a = x0 - get_prediction(self.mu, u)
 			c = z[batch_i,:2] - z_expected
+			# print(len(a)+len(c))
 
 			b = np.random.rand(A.shape[0]) # TODO: should consist of a-s and c-s
 
@@ -99,6 +98,8 @@ class SAM():
 
 	def initialize_new_landmark(self, lm_id, z, batch_i):        
 		self.lm_seq.append(lm_id)
+		self.number_of_lms = len(self.lm_seq)
+
 
 	def adjacency_matrix(self, G,H,J, number_of_lms, visualize=False):
 		self.M = number_of_lms
@@ -244,16 +245,21 @@ class SAM():
 		return self.state.Sigma
 
 
+# from run import get_cli_args
+# args = get_cli_args()
+# print(args)
+
 # mean_prior = np.array([180., 50., 0.])
 # Sigma_prior = 1e-12 * np.eye(3, 3)
 # initial_state = Gaussian(mean_prior, Sigma_prior)
 
 # # sam object initialization
-# number_of_lms = int( sys.argv[1] )
-# sam = SAM(initial_state)
+# number_of_lms = 8
+# print(number_of_lms)
+# sam = SAM(initial_state, args)
 
 # # Adjacency matrix for random Jacobians
 # # M=N = 8, K = 8*2=16
-# A = sam.adjacency_matrix(sam.G,sam.H,sam.J, number_of_lms, visualize=False)
+# A = sam.adjacency_matrix(sam.G,sam.H,sam.J, number_of_lms, visualize=True)
 # b = np.random.rand(A.shape[0])
 # print('\ndelta_x=', sam.QR_factorization(A,b)[:3])

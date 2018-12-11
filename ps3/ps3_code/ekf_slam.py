@@ -29,7 +29,7 @@ class EKF_SLAM(SlamBase):
         self.state_bar = self.state
         self.R = np.zeros_like(self.state.Sigma)
         self.G = np.zeros_like(self.state.Sigma)
-        self.Q = np.diag([self.params.beta[0]**2, self.params.beta[1]**2])
+        self.Q = np.diag([self.params.beta[0]**2, radians(self.params.beta[1])**2])
         self.lm_seq = [] # sequence of lms
         self.m_new = np.array([None, None])
 
@@ -45,29 +45,27 @@ class EKF_SLAM(SlamBase):
         Sigma = np.block([[Sx, Sxm, Sur],
                           [Smx, Sm, Sr],
                           [Sbl, Sb, Sbr]])
-        self.iM = Sigma.shape[0]-self.iR
         # print('\n|Sigma|=', np.linalg.det(Sigma))
         return Sigma
 
 
-    def initialize_new_landmark(self, lm_id, z, batch_i):        
+    def initialize_new_landmark(self, lm_id, z, batch_i):    
         self.lm_seq.append(lm_id)
-        self.G = block_diag(self.G, np.eye(2))
-        self.R = block_diag(self.R, np.zeros((2,2)))
+        self.iM += 2
 
         r = z[batch_i,0]
         phi = wrap_angle(z[batch_i,1])
-        theta =  wrap_angle(self.mu_bar[2])
-        self.m_new = self.mu_bar[:2] + np.array([r*cos(wrap_angle(phi+theta)), r*sin(wrap_angle(phi+theta))])
-        L = self.get_jacobian_L(r, phi, theta)
-        W = self.get_jacobian_W(r, phi, theta)
+        theta = wrap_angle(self.mu_bar[2])
+        ang = wrap_angle(phi+theta)
 
-        self.state_bar.mu = np.append(self.mu_bar, self.m_new)[np.newaxis].T # append new lm coords to the state vector
+        mu_new = self.mu[:2] + np.array([r*cos(ang), r*sin(ang)]) # position of new landmark
+        self.state.mu=np.append(self.mu, mu_new)[np.newaxis].T
+
+        L = self.get_jacobian_L(r, phi, theta)
+        W = self.get_jacobian_W(r, phi, theta)            
         self.state_bar.Sigma = self.expandSigma(self.Sigma_bar, L, W, self.Q) # expand covariance matrix
 
-        self.mu_bar[2] = wrap_angle(self.mu_bar[2])
-        self.mu[2] = wrap_angle(self.mu[2])
-        
+
 
     def predict(self, u, dt=None):
         iR = self.iR # Robot indexes
@@ -84,7 +82,6 @@ class EKF_SLAM(SlamBase):
 
         # EKF prediction of the state mean.
         self.state_bar.mu[:iR] = get_prediction(mu_r, u)[np.newaxis].T
-        self.state_bar.mu[2] = wrap_angle(self.mu_bar[2])
 
         # EKF prediction of the state covariance.
         self.state_bar.Sigma[:iR,:iR] = G_x @ self.Sigma[:iR, :iR] @ G_x.T + R_t
@@ -99,28 +96,24 @@ class EKF_SLAM(SlamBase):
 
 
     def update(self, z):
-        for lm_id in z[:,2]: # for all observed features
-            batch_i = np.where(z==lm_id)[0][0] # 0th or 1st of observed lms in the batch
-
-            r = z[batch_i,0]
-            phi = wrap_angle(z[batch_i,1])
-            theta =  wrap_angle(self.mu_bar[2])
-            self.m_new = self.mu_bar[:2] + np.array([r*cos((phi+theta)), r*sin((phi+theta))])
-
-            if (lm_id not in self.lm_seq): # lm never seen before
+        iR = self.iR
+        for batch_i in range(z.shape[0]):
+            lm_id = z[batch_i,2]
+            z[batch_i,1] = wrap_angle(z[batch_i,1])
+            if lm_id not in self.lm_seq:
                 self.initialize_new_landmark(lm_id, z, batch_i)
-
-            delta = np.array(self.m_new - self.mu_bar[:2])
+            j = int(np.where(self.lm_seq==lm_id)[0] + 1) # number of ID in landmark array
+            delta = self.mu_bar[iR+2*j-2:iR+2*j] - self.mu_bar[:2]
             q = np.dot( delta, delta.T )
-            z_expected = np.array([ sqrt(q), wrap_angle( atan2(delta[1],delta[0])-self.mu_bar[2] ) ])
-            H = self.get_jacobian_H(q, delta, int(lm_id))
+            H = self.get_jacobian_H(q, delta, lm_id)
+            S = H @ self.Sigma_bar @ H.T + self.Q
+            K = self.Sigma_bar @ H.T @ np.linalg.inv(S)
 
-            S = (H @ self.Sigma_bar) @ H.T + self.Q
-            K = (self.Sigma_bar @ H.T) @ np.linalg.inv(S)
-
+            z_expected = np.array([ sqrt(q), wrap_angle( atan2(delta[1],delta[0]) - self.mu_bar[2] ) ])
             innovation_vector = z[batch_i,:2] - z_expected; innovation_vector[1] = wrap_angle(innovation_vector[1])
-            self.state_bar.mu = self.state_bar.mu + K @ (innovation_vector)[np.newaxis].T
-            self.state_bar.Sigma = (np.eye(K.shape[0]) - (K @ H)) @ self.Sigma_bar
+            
+            self.state_bar.mu = self.mu_bar[np.newaxis].T + K @ (innovation_vector)[np.newaxis].T
+            self.state_bar.Sigma = (np.eye((K @ H).shape[0]) - (K @ H)) @ self.Sigma_bar
 
         self.mu_bar[2] = wrap_angle(self.mu_bar[2])
         self.mu[2] = wrap_angle(self.mu[2])
@@ -137,6 +130,7 @@ class EKF_SLAM(SlamBase):
         """
         drot1, dtran, drot2 = motion
         a1, a2, a3, a4 = self.params.alphas
+        a1 = a1 **2; a2 = a2 **2; a3 = a3 **2; a4 = a4 **2
 
         return np.diag([a1 * drot1 ** 2 + a2 * dtran ** 2,
                         a3 * dtran ** 2 + a4 * (drot1 ** 2 + drot2 ** 2),
@@ -196,14 +190,14 @@ class EKF_SLAM(SlamBase):
     @staticmethod
     def get_jacobian_L(r, phi, theta):
         # L = dh^(-1) / dy, y = state
-        return np.array([[1, 0, -r*sin(wrap_angle(phi+theta))],
-                         [0, 1, r*cos(wrap_angle(phi+theta)) ]])
+        return np.array([[1, 0, -r*sin(phi+theta)],
+                         [0, 1, r*cos(phi+theta) ]])
 
     @staticmethod
     def get_jacobian_W(r, phi, theta):
         # W = dh^(-1) / dz, z = [r, phi] - lm measurement wrt robot's pose
-        return np.array([[cos(wrap_angle(phi+theta)), -r*sin(wrap_angle(phi+theta))],
-                         [sin(wrap_angle(phi+theta)), r*cos(wrap_angle(phi+theta))]])
+        return np.array([[cos(phi+theta), -r*sin(phi+theta)],
+                         [sin(phi+theta), r*cos(phi+theta)]])
 
     @property
     def mu_bar(self):

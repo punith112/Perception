@@ -24,6 +24,7 @@ from tools.plot import plot_robot
 from field_map import FieldMap
 from ekf_slam import EKF_SLAM
 from tools.data import generate_data as generate_input_data
+from tools.data import save_data as save_input_data
 from tools.data import load_data
 from tools.plot import plot_field
 from tools.plot import plot_observations
@@ -103,6 +104,13 @@ def get_cli_args():
                         action='store',
                         help='The FPS rate of the movie to write.',
                         default=10.)
+    parser.add_argument('-o',
+                        '--output-dir',
+                        type=str,
+                        default=None,
+                        action='store',
+                        help='The output directory to which the input and '
+                             'output data from the simulation will be stored.')
     return parser.parse_args()
 
 def validate_cli_args(args):
@@ -136,6 +144,7 @@ def main():
     else:
         raise RuntimeError('')
 
+    store_sim_data = True if args.output_dir else False
     should_show_plots = True if args.animate else False
     should_write_movie = True if args.movie_file else False
     should_update_plots = True if should_show_plots or should_write_movie else False
@@ -146,9 +155,15 @@ def main():
     movie_writer = get_movie_writer(should_write_movie, 'Simulation SLAM', args.movie_fps, args.plot_pause_len)
     progress_bar = FillingCirclesBar('Simulation Progress', max=data.num_steps)
 
+    if store_sim_data:
+        if not os.path.exists(args.output_dir):
+            os.makedirs(args.output_dir)
+        save_input_data(data, os.path.join(args.output_dir, 'input_data.npy'))
+
     # slam object initialization
     slam = EKF_SLAM('ekf', 'known', 'batch', args, initial_state)
-    mu_traj = np.array([None, None])
+    mu_traj = mean_prior
+    sigma_traj = []
     theta = []
 
     with movie_writer.saving(fig, args.movie_file, data.num_steps) if should_write_movie else get_dummy_context_mgr():
@@ -167,7 +182,8 @@ def main():
             
             # TODO SLAM update
             mu, Sigma = slam.update(z)
-            mu_traj = np.vstack((mu_traj, mu[:2]))
+            mu_traj = np.vstack((mu_traj, mu[:3]))
+            sigma_traj.append(Sigma[:3,:3])
             theta.append(mu[2])
 
             progress_bar.next()
@@ -214,6 +230,13 @@ def main():
     # plt.figure(2)
     # plt.plot(theta)
     plt.show(block=True)
+
+    if store_sim_data:
+        file_path = os.path.join(args.output_dir, 'output_data.npy')
+        with open(file_path, 'wb') as data_file:
+            np.savez(data_file,
+                     mean_trajectory=mu_traj,
+                     covariance_trajectory=np.array(sigma_traj))
 
 if __name__ == '__main__':
     main()
