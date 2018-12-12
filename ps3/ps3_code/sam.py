@@ -16,6 +16,7 @@ class SAM():
 		self.params = args
 		self.R = np.zeros_like(self.state.Sigma)
 		self.G = np.zeros_like(self.state.Sigma)
+		self.N = 0
 		self.M = 0 # number of all lms
 		self.observed_lms = 2
 		self.K = self.M*self.observed_lms # number of measurements Z
@@ -29,6 +30,7 @@ class SAM():
 		self.H = []
 		self.J = []
 		self.lm_seq = [] # sequence of lms
+		self.js = []
 		self.x_traj = initial_state.mu
 		self.lm_poses = np.array([])
 		
@@ -61,6 +63,9 @@ class SAM():
 
 	def update(self, u, z):
 		for batch_i in range(z.shape[0]): # for all observed features
+			self.N += 1
+			self.M = len(self.lm_seq)
+			self.K = self.N * z.shape[0]
 			lm_id = z[batch_i,2]
 
 			if (lm_id not in self.lm_seq): # lm never seen before
@@ -68,12 +73,16 @@ class SAM():
 
 			# G, H, J calculation
 			j = int(np.where(self.lm_seq==lm_id)[0] + 1) # number of ID in landmark array
+			self.js.append(j)
 			delta = self.mu_bar[self.iR+2*j-2 : self.iR+2*j] - self.mu_bar[:2]
 			q = np.dot( delta, delta.T )
 			z_expected = np.array([ sqrt(q), wrap_angle( atan2(delta[1],delta[0])-self.mu_bar[2] ) ])
 			self.H.append( self.get_jacobian_Hx(q, delta) )
 			self.J.append( self.get_jacobian_J(q, delta) )
 			self.G.append( self.get_g_prime_wrt_state(self.mu[:self.iR], u) )
+			# self.H = self.get_jacobian_Hx(q, delta)
+			# self.J = self.get_jacobian_J(q, delta)
+			# self.G = self.get_g_prime_wrt_state(self.mu[:self.iR], u)
 			
 			self.x_traj = np.vstack((self.x_traj, self.state.mu[:3]))
 
@@ -84,8 +93,8 @@ class SAM():
 			b = np.random.rand(A.shape[0]) # TODO: should consist of a-s and c-s
 			delta = self.QR_factorization(A,b)
 
-			self.state_bar.mu[:3] = (self.mu_bar[:3] + delta[:3])[np.newaxis].T
-			print(len(self.x_traj),  len(delta[:-len(self.lm_seq)*2]))
+			# self.state_bar.mu[:3] = (self.mu_bar[:3] + delta[:3])[np.newaxis].T
+			# print(len(self.x_traj),  len(delta[:-len(self.lm_seq)*2]))
 
 		# self.state.mu = self.state_bar.mu
 
@@ -113,13 +122,14 @@ class SAM():
 
 	# def adjacency_matrix(self, G,H,J, number_of_lms, visualize=False):
 	def adjacency_matrix(self, lm_id):
+		j = np.where(self.lm_seq==lm_id)[0][0]
+		js0 = np.array(self.js)-self.js[0]
 		self.M = int( max(self.lm_seq) ); M = self.M # number of landmarks M
-		self.N = int( self.x_traj.shape[0] / self.iR ) # number of poses X;
 		N = self.N
 		K = self.N * self.observed_lms # number of measurements Z
 		observed_lms = self.observed_lms # number of measurements from 1 pose
 		G = self.G[-1]; H = self.H[-1]; J = self.J[-1]
-		dx = G.shape[0]; dz = H.shape[0]; dm = J.shape[1]
+		dx = G.shape[0]; dz = H.shape[0]; dm = J.shape[0]
 		A = np.zeros((N*dx+K*dz,N*dx+M*dm))
 		I = np.eye(dx)
 		for i in range(N):
@@ -134,9 +144,26 @@ class SAM():
 		        hc = dx*h
 		        A[hr:hr+dz, hc:hc+dx] = self.H[h-1]
 		        jr = hr
-		        jc = dx*N+dm*(h+batch+dM)%(M*dm)
+		        jc = dx*N+ ( dm*js0[h] %(M*dm) )
 		        A[jr:jr+dz, jc:jc+dm] = self.J[h-1]
+		self.A = A
 		return A
+
+	# def adjacency_matrix(self):
+	# 	dx = 3; dz = 2; dm = 2
+	# 	A00 = - np.eye(self.N * dx);     A01 = np.zeros((self.N *dx,self.M*dm))
+	# 	A10 = np.zeros((self.K*dz, self.N*dx)); A11 = np.zeros((self.K*dz,self.M*dm))
+
+	# 	if A00.shape[0]>3:
+	# 		A00[-3-self.G.shape[0]:-3 ,-3-self.G.shape[1]:-3] = self.G
+	# 	# print(A00[-3-self.G.shape[0]:-3 ,-3-self.G.shape[1]:-3].shape)
+
+	# 	A = np.block([[A00, A01],
+	# 	              [A10, A11]])
+
+	# 	self.A = A
+	# 	return A
+
 
 	@staticmethod
 	def back_substitution(R, b):

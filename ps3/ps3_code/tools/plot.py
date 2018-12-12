@@ -76,13 +76,13 @@ def get_plots_figure(should_show_plots, should_write_movie):
     :return: A figure if the plots should be shown or a movie file should be written, else None.
     """
 
-    fig = None
+    fig_robot = None
     if should_show_plots or should_write_movie:
-        fig = plt.figure(1)
+        fig_robot = plt.figure()
     if should_show_plots:
         plt.ion()
 
-    return fig
+    return fig_robot
 
 
 def plot_field(field_map, detected_landmarks):

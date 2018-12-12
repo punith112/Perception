@@ -142,7 +142,7 @@ def main():
 
     field_map = FieldMap(args.num_landmarks_per_side)
 
-    fig = get_plots_figure(should_show_plots, should_write_movie)
+    fig_robot = get_plots_figure(should_show_plots, should_write_movie)
     movie_writer = get_movie_writer(should_write_movie, 'Simulation SLAM', args.movie_fps, args.plot_pause_len)
     progress_bar = FillingCirclesBar('Simulation Progress', max=data.num_steps)
 
@@ -151,8 +151,9 @@ def main():
     sam = SAM(initial_state, args)
     mu_traj = np.array([None, None])
     theta = []
-    with movie_writer.saving(fig, args.movie_file, data.num_steps) if should_write_movie else get_dummy_context_mgr():
+    with movie_writer.saving(fig_robot, args.movie_file, data.num_steps) if should_write_movie else get_dummy_context_mgr():
         for t in range(data.num_steps):
+        # for t in range(50):
             # Used as means to include the t-th time-step while plotting.
             tp1 = t + 1
 
@@ -166,7 +167,7 @@ def main():
 
             
             # TODO SLAM update
-            # mu, Sigma = sam.update(u, z)
+            mu, Sigma = sam.update(u, z)
             mu_traj = np.vstack((mu_traj, mu[:2]))
             theta.append(mu[2])
 
@@ -174,6 +175,7 @@ def main():
             if not should_update_plots:
                 continue
 
+            plt.figure(1)
             plt.cla()
             plot_field(field_map, z)
             plot_robot(data.debug.real_robot_path[t])
@@ -192,6 +194,9 @@ def main():
             plt.plot(mu_traj[:,0], mu_traj[:,1], 'blue')
             plot2dcov(mu[:2], Sigma[:2,:2], color='b', nSigma=3, legend=None)
 
+            plt.figure(2, figsize=(10,10))
+            plt.cla()
+            plt.spy(sam.A, marker='o', markersize=5)
 
             if should_show_plots:
                 # Draw all the plots and pause to create an animation effect.
@@ -203,9 +208,8 @@ def main():
 
     progress_bar.finish()
 
-    # plt.figure(2)
-    # plt.plot(theta)
-    plt.show(block=True)
+    plt.show()
+    # plt.show(block=True)
 
 if __name__ == '__main__':
     main()
