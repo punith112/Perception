@@ -4,13 +4,14 @@ from math import *
 import matplotlib.pyplot as plt
 
 
-def transition_matrix(T):
+def transition_matrix(T, u):
 	"""
 	input: T - timestep
 	output: G - 6x6 transition matrix, propagating position and velocity
 			accoring to the motion model:
-			x_i = x_i-1 + v_i*T + a_i*T^2 / 2
-			v_i = v_i-1 + a_i* T
+			x_i = x_i-1 + v_i*T + ui*T^2 / 2
+			v_i = v_i-1 + ui* T
+			ui  = a_i + eps_i
 			for each of 3 coordinates x = [x, y, z], v = [vx, vy, vz],
 			where a_i is random acceleration
 	"""
