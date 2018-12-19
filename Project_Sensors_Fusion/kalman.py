@@ -4,7 +4,7 @@ from math import *
 import matplotlib.pyplot as plt
 
 
-def transition_matrix(T, u):
+def transition_matrix(T):
 	"""
 	input: T - timestep
 	output: G - 6x6 transition matrix, propagating position and velocity
@@ -86,9 +86,9 @@ def kalman_filter(X0, P0, z, T):
 visualize = 1
 
 T = 0.05
-G = transition_matrix(T)
-R = odometry_covariance_matrix(T, sigmaA=4)
-H = observation_matrix(T)
+# G = transition_matrix(T)
+# R = odometry_covariance_matrix(T, sigmaA=4)
+# H = observation_matrix(T)
 
 # print('G = \n', G)
 # print('R = \n', R)
@@ -103,7 +103,7 @@ zy = y + sigma_noise*np.random.randn(N)
 zz = z + sigma_noise*np.random.randn(N)
 
 Z = np.vstack((zx,zy,zz))
-X0 = np.array([1,0, 0,0, 2,0]) # x,vx, y,vy, z,nz
+X0 = np.array([1,0.1, 0,0.1, 2,0]) # x,vx, y,vy, z,nz
 P0 = 0.1 * np.eye(6)
 Xfl, Pfl = kalman_filter(X0, P0, Z, T)
 
@@ -141,7 +141,7 @@ if visualize:
 
 	plt.figure()
 	plt.plot(zz, '.')
-	plt.plot(zfl)
+	plt.plot(zfl, 'ro')
 	plt.plot(z)
 	plt.title('Z')
 	plt.legend(['measurements', 'filtered', 'real'])
