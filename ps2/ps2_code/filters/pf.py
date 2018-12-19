@@ -69,18 +69,14 @@ class PF(LocalizationFilter):
         super(PF, self).__init__(initial_state, alphas, beta)
         # Specific class variables for the PF
         self.Sigma0 = initial_state.Sigma
-<<<<<<< HEAD
         self.M = num_particles * 2
-=======
-        self.M = num_particles * 3
->>>>>>> d54699fc89c31f00d3afd6f7264bf16738a3a4e5
         self.X_bar = np.ones((3,self.M)) * initial_state.mu
         self.X = np.ones((3,self.M)) * initial_state.mu
         self.w_bar = np.ones(self.M) / self.M
         self.w = np.ones(self.M) / self.M # uniform weighs distribution
         self.Z = np.zeros(self.M)
 
-    def weights_update(self, z):        
+    def weights_update(self, z):
         mx = self._field_map.landmarks_poses_x[int(z[1])]
         my = self._field_map.landmarks_poses_y[int(z[1])]
         H = jacobian_H([mx, my], self.mu)
