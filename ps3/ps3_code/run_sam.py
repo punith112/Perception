@@ -194,7 +194,7 @@ def main():
             plt.plot(mu_traj[:,0], mu_traj[:,1], 'blue')
             plot2dcov(mu[:2], Sigma[:2,:2], color='b', nSigma=3, legend=None)
 
-            plt.figure(2, figsize=(10,10))
+            plt.figure(2, figsize=(8,6))
             plt.cla()
             plt.spy(sam.A, marker='o', markersize=5)
 

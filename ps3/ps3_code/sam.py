@@ -1,11 +1,13 @@
 import numpy as np
 from math import *
-import matplotlib.pyplot as plt
 import scipy.linalg as la
+from scipy.linalg import cholesky
+import matplotlib.pyplot as plt
+
 from tools.objects import Gaussian
-import sys
 from tools.task import get_prediction, wrap_angle
 
+import sys
 
 class SAM():
 	def __init__(self, initial_state, args):
@@ -24,6 +26,8 @@ class SAM():
 		N = 0 # number of poses X
 		K = self.K
 		dx = len(initial_state.mu); dz = 2; dm = 2;
+		self.Wx = []
+		self.Wz = []
 		self.A = np.zeros((N*dx+K*dz,N*dx+M*dm))
 		self.b = np.random.rand(self.A.shape[0])[np.newaxis].T
 		self.G = []
@@ -44,6 +48,7 @@ class SAM():
 		M_t = self.get_motion_noise_covariance(u)
 
 		R_t = V_x @ M_t @ V_x.T
+		# self.Wx.append(np.linalg.inv( cholesky(R_t, lower=True).T) )
 
 		# EKF prediction of the state mean.
 		self.state_bar.mu[:iR] = get_prediction(mu_r, u)[np.newaxis].T
@@ -91,7 +96,7 @@ class SAM():
 			# a = x0 - get_prediction(self.mu, u)
 			# c = z[batch_i,:2] - z_expected
 			b = np.random.rand(A.shape[0]) # TODO: should consist of a-s and c-s
-			delta = self.QR_factorization(A,b)
+			# delta = self.QR_factorization(A,b)
 
 			# self.state_bar.mu[:3] = (self.mu_bar[:3] + delta[:3])[np.newaxis].T
 			# print(len(self.x_traj),  len(delta[:-len(self.lm_seq)*2]))
@@ -130,7 +135,7 @@ class SAM():
 		observed_lms = self.observed_lms # number of measurements from 1 pose
 		G = self.G[-1]; H = self.H[-1]; J = self.J[-1]
 		dx = G.shape[0]; dz = H.shape[0]; dm = J.shape[0]
-		A = np.zeros((N*dx+K*dz,N*dx+M*dm))
+		A = np.zeros( (N*dx+K*dz, N*dx+M*dm) )
 		I = np.eye(dx)
 		for i in range(N):
 		    A[dx*i:dx*(i+1),dx*i:dx*(i+1)] = I
